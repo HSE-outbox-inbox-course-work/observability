@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: outbox-payments-service
+    static_configs:
+      - targets: ['outbox:8080']
+    metrics_path: /metrics
