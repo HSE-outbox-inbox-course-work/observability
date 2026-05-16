@@ -1,0 +1,177 @@
+{
+  "uid": "delivery-overview",
+  "title": "Delivery Overview",
+  "tags": ["course-work", "delivery"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "links": [
+    {"title": "Outbox", "type": "dashboards", "tags": ["course-work"], "asDropdown": false, "includeVars": false, "keepTime": true},
+    {"title": "Inbox", "type": "dashboards", "tags": ["course-work"], "asDropdown": false, "includeVars": false, "keepTime": true},
+    {"title": "Infrastructure", "type": "dashboards", "tags": ["course-work"], "asDropdown": false, "includeVars": false, "keepTime": true}
+  ],
+  "panels": [
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Inbox E2E latency p99 (5m)",
+      "description": "Сквозная задержка от момента вставки события в outbox до фиксации в inbox.processed.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 0, "w": 6, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 1},
+            {"color": "red", "value": 30}
+          ]},
+          "color": {"mode": "thresholds"}
+        },
+        "overrides": []
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "targets": [
+        {"refId": "A", "expr": "inbox:e2e_latency:p99_5m", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 11,
+      "type": "stat",
+      "title": "Outbox API errors (5xx) ratio",
+      "description": "Доля ответов 5xx от outbox API за последние 5 минут.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 6, "y": 0, "w": 6, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 0.01},
+            {"color": "red", "value": 0.05}
+          ]},
+          "color": {"mode": "thresholds"}
+        },
+        "overrides": []
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(outbox_http_requests_total{status=~\"5..\"}[5m])) / clamp_min(sum(rate(outbox_http_requests_total[5m])),0.001)", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 12,
+      "type": "stat",
+      "title": "DLQ rate (msg/s)",
+      "description": "Скорость публикации сообщений в dead-letter-queue.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 0, "w": 6, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 0.5},
+            {"color": "red", "value": 1}
+          ]},
+          "color": {"mode": "thresholds"}
+        },
+        "overrides": []
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "targets": [
+        {"refId": "A", "expr": "sum(rate(inbox_dlq_messages_total{outcome=\"ok\"}[1m]))", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 13,
+      "type": "stat",
+      "title": "Inbox consumer lag",
+      "description": "kafka_consumergroup_lag для inbox-service: сколько сообщений ещё не обработано.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {"mode": "absolute", "steps": [
+            {"color": "green", "value": null},
+            {"color": "yellow", "value": 50},
+            {"color": "red", "value": 500}
+          ]},
+          "color": {"mode": "thresholds"}
+        },
+        "overrides": []
+      },
+      "options": {"reduceOptions": {"calcs": ["lastNotNull"]}, "colorMode": "value", "graphMode": "area"},
+      "targets": [
+        {"refId": "A", "expr": "sum(kafka_consumergroup_lag{consumergroup=\"inbox-service\"})", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Transfer requests / s by status",
+      "description": "RED-метрика: трафик на /api/v1/accounts/transfer-money разбит по HTTP статусу.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (status) (rate(outbox_http_requests_total{route=\"/api/v1/accounts/transfer-money\"}[1m]))", "legendFormat": "{{status}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "E2E delivery latency",
+      "description": "Гистограмма inbox_delivery_e2e_latency_seconds в виде p50/p95/p99.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 4, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(inbox_delivery_e2e_latency_seconds_bucket[5m])))", "legendFormat": "p50", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "inbox:e2e_latency:p95_5m", "legendFormat": "p95", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "C", "expr": "inbox:e2e_latency:p99_5m", "legendFormat": "p99", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Outbox table depth & oldest event age",
+      "description": "Сколько строк в таблице outbox и возраст самого старого события. Под штатной нагрузкой и CDC обе линии околонулевые.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "oldest age, s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "custom.axisPlacement", "value": "right"}]}
+        ]
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "outbox_table_rows", "legendFormat": "rows", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "outbox_oldest_event_age_seconds", "legendFormat": "oldest age, s", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 23,
+      "type": "timeseries",
+      "title": "Inbox processing outcomes / s",
+      "description": "Разбивка финальных исходов обработки сообщений в Inbox. Спайк processing_error или validation_error виден сразу.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "inbox:processing:rate5m", "legendFormat": "{{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    }
+  ]
+}

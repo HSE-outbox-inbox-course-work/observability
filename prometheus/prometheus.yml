@@ -1,0 +1,64 @@
+# Prometheus конфигурация наблюдаемости системы гарантированной доставки.
+#
+# scrape_interval=10s — достаточно мелкий шаг, чтобы при защите были видны
+# отклики на chaos-сценарии (рестарт inbox-а, остановка Debezium) в режиме
+# почти-реального времени, не наполняя TSDB сверх меры за 24h retention.
+#
+# Job-имена совпадают с тем, как сервис себя называет — это позволяет в
+# дашбордах фильтровать строго по job без догадок о relabel'ах.
+
+global:
+  scrape_interval: 10s
+  evaluation_interval: 10s
+  external_labels:
+    monitor: course-work-observability
+
+rule_files:
+  - /etc/prometheus/recording_rules.yml
+  - /etc/prometheus/alerting_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
+
+scrape_configs:
+
+  # Сам Prometheus — обязательно скрейпим себя, чтобы видеть up=1
+  # и метрики самого TSDB (rate of dropped samples, scrape duration).
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Микросервисы команды
+
+  - job_name: outbox
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['outbox:8080']
+
+  - job_name: inbox
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['inbox:8080']
+
+  # PostgreSQL: два инстанса, разные БД (outbox и inbox)
+
+  - job_name: postgres-outbox
+    static_configs:
+      - targets: ['postgres-exporter-outbox:9187']
+        labels:
+          db: outbox
+
+  - job_name: postgres-inbox
+    static_configs:
+      - targets: ['postgres-exporter-inbox:9187']
+        labels:
+          db: inbox
+
+  # Kafka: один экземпляр, отдаёт kafka_consumergroup_lag,
+  # kafka_topic_partition_current_offset и пр.
+
+  - job_name: kafka
+    static_configs:
+      - targets: ['kafka-exporter:9308']

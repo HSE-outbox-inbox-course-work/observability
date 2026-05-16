@@ -1,0 +1,203 @@
+{
+  "uid": "inbox-service",
+  "title": "Inbox Service",
+  "tags": ["course-work", "inbox"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-15m", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "Kafka consumer & throughput",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Kafka messages read / s by outcome",
+      "description": "Потребление из топика accounts.money.transferred. read_error / bad_envelope / bad_payload означают, что Inbox даже не дошёл до бизнес-логики.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 1, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (outcome) (rate(inbox_kafka_messages_read_total[1m]))", "legendFormat": "{{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Kafka consumer lag",
+      "description": "Сколько сообщений в топике уже опубликовано, но ещё не закоммичено группой inbox-service. Раздуется во время остановки Inbox или Debezium.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25}}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (topic) (kafka_consumergroup_lag{consumergroup=\"inbox-service\"})", "legendFormat": "{{topic}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Processing pipeline",
+      "gridPos": {"x": 0, "y": 9, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Processing outcomes / s",
+      "description": "Финальный исход ProcessPayment: processed / duplicate / validation_error / processing_error.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 10, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (outcome) (rate(inbox_messages_processed_total[1m]))", "legendFormat": "{{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Processing duration p50/p95/p99",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 10, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "histogram_quantile(0.50, sum by (le, outcome) (rate(inbox_processing_duration_seconds_bucket[5m])))", "legendFormat": "p50 {{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "histogram_quantile(0.95, sum by (le, outcome) (rate(inbox_processing_duration_seconds_bucket[5m])))", "legendFormat": "p95 {{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "C", "expr": "histogram_quantile(0.99, sum by (le, outcome) (rate(inbox_processing_duration_seconds_bucket[5m])))", "legendFormat": "p99 {{outcome}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 3,
+      "type": "row",
+      "title": "Dedup, validation, DLQ",
+      "gridPos": {"x": 0, "y": 18, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Duplicates rate / s",
+      "description": "Сколько сообщений пришло повторно (existing.Status == PROCESSED). Высокий уровень = at-least-once Kafka реально работает.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 19, "w": 8, "h": 7},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25}}, "overrides": []},
+      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (topic) (rate(inbox_duplicates_total[1m]))", "legendFormat": "{{topic}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Validation errors by field",
+      "description": "Какое поле упало на validate() в ProcessPayment. Заполняется во время сценария chaos-dlq.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 8, "y": 19, "w": 8, "h": 7},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "bars", "lineWidth": 1, "fillOpacity": 80}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["sum"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (field) (rate(inbox_validation_errors_total[1m]))", "legendFormat": "{{field}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 32,
+      "type": "timeseries",
+      "title": "DLQ produce rate by error_type",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 16, "y": 19, "w": 8, "h": 7},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (error_type) (rate(inbox_dlq_messages_total{outcome=\"ok\"}[1m]))", "legendFormat": "{{error_type}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 4,
+      "type": "row",
+      "title": "End-to-end latency",
+      "gridPos": {"x": 0, "y": 26, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "E2E latency p50/p95/p99",
+      "description": "Сквозная задержка от outbox.event_time до фиксации PROCESSED в inbox_order. Главный SLI всей системы.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 27, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "histogram_quantile(0.50, sum by (le) (rate(inbox_delivery_e2e_latency_seconds_bucket[5m])))", "legendFormat": "p50", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "inbox:e2e_latency:p95_5m", "legendFormat": "p95", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "C", "expr": "inbox:e2e_latency:p99_5m", "legendFormat": "p99", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 41,
+      "type": "heatmap",
+      "title": "E2E latency heatmap",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 27, "w": 12, "h": 8},
+      "options": {"calculate": false, "yAxis": {"unit": "s"}, "color": {"scheme": "Spectral", "mode": "scheme"}, "tooltip": {"show": true, "yHistogram": true}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (le) (rate(inbox_delivery_e2e_latency_seconds_bucket[1m]))", "format": "heatmap", "legendFormat": "{{le}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 5,
+      "type": "row",
+      "title": "inbox_order table",
+      "gridPos": {"x": 0, "y": 35, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 50,
+      "type": "timeseries",
+      "title": "inbox_order rows by status",
+      "description": "Распределение строк по статусам RECEIVED / PROCESSED / FAILED. Норма — почти всё в PROCESSED, FAILED ровно столько, сколько чем-то пробили в DLQ.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 36, "w": 12, "h": 7},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "inbox_table_rows", "legendFormat": "{{status}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 51,
+      "type": "timeseries",
+      "title": "Inbox pgxpool & goroutines",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 36, "w": 12, "h": 7},
+      "fieldConfig": {"defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 5}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "inbox_pgx_pool_acquired_connections", "legendFormat": "pool acquired", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "inbox_pgx_pool_idle_connections", "legendFormat": "pool idle", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "C", "expr": "go_goroutines{job=\"inbox\"}", "legendFormat": "goroutines", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    }
+  ]
+}

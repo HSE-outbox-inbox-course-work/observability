@@ -1,0 +1,108 @@
+{
+  "uid": "infra",
+  "title": "Infrastructure (PostgreSQL & Kafka)",
+  "tags": ["course-work", "infra"],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "timezone": "browser",
+  "refresh": "10s",
+  "time": {"from": "now-30m", "to": "now"},
+  "templating": {"list": []},
+  "annotations": {"list": []},
+  "panels": [
+    {
+      "id": 1,
+      "type": "row",
+      "title": "PostgreSQL",
+      "gridPos": {"x": 0, "y": 0, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Transactions / s (commit / rollback)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 1, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (db, datname) (rate(pg_stat_database_xact_commit[1m]))", "legendFormat": "{{db}} {{datname}} commit", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "sum by (db, datname) (rate(pg_stat_database_xact_rollback[1m]))", "legendFormat": "{{db}} {{datname}} rollback", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "outbox / inbox_order: dead vs live tuples",
+      "description": "Скачок dead — много UPDATE/DELETE и потенциальная нагрузка на autovacuum.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 1, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "pg_stat_user_tables_n_dead_tup{relname=~\"outbox|inbox_order\"}", "legendFormat": "{{db}} {{relname}} dead", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "pg_stat_user_tables_n_live_tup{relname=~\"outbox|inbox_order\"}", "legendFormat": "{{db}} {{relname}} live", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 12,
+      "type": "timeseries",
+      "title": "Replication slot WAL lag (bytes)",
+      "description": "Сколько WAL ещё держит slot outbox_slot. Растёт, когда Debezium стоит или тормозит.",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 9, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "pg_replication_slots_pg_wal_lsn_diff", "legendFormat": "{{slot_name}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 13,
+      "type": "timeseries",
+      "title": "Active connections by db",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 9, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "pg_stat_database_numbackends", "legendFormat": "{{db}} {{datname}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+
+    {
+      "id": 2,
+      "type": "row",
+      "title": "Kafka",
+      "gridPos": {"x": 0, "y": 17, "w": 24, "h": 1},
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Topic offsets (max - latest)",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 0, "y": 18, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (topic) (kafka_topic_partition_current_offset{topic!~\"_.*|my_connect.*\"})", "legendFormat": "{{topic}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Consumer group lag",
+      "datasource": {"type": "prometheus", "uid": "prometheus"},
+      "gridPos": {"x": 12, "y": 18, "w": 12, "h": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
+      "targets": [
+        {"refId": "A", "expr": "sum by (consumergroup, topic) (kafka_consumergroup_lag{topic!~\"_.*|my_connect.*\"})", "legendFormat": "{{consumergroup}} / {{topic}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+      ]
+    }
+  ]
+}
