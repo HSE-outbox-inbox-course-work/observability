@@ -1,6 +1,6 @@
 OUTBOX_DIR := ../outbox-payments-service
 
-.PHONY: start stop restart register-connector transfer check check-outbox logs logs-outbox logs-inbox status
+.PHONY: start stop restart register-connector transfer check check-outbox logs
 
 # Start
 
@@ -9,7 +9,7 @@ start:
 	@$(MAKE) -s _wait-outbox
 	@$(MAKE) -s register-connector
 	@echo ""
-	@echo "Стек запущен:"
+	@echo "Services running:"
 	@echo "  Outbox API:  http://localhost:8080"
 	@echo "  Kafka UI:    http://localhost:8081"
 	@echo "  Kafka Conn:  http://localhost:8083"
@@ -29,14 +29,14 @@ _wait-connect:
 	@until curl -sf localhost:8083/connectors > /dev/null 2>&1; do \
 		printf "."; sleep 3; \
 	done
-	@echo " готов"
+	@echo " ready"
 
 _wait-outbox:
 	@echo "Waiting for healthcheck..."
 	@until [ "$$(docker inspect --format='{{.State.Health.Status}}' outbox 2>/dev/null)" = "healthy" ]; do \
 		printf "."; sleep 2; \
 	done
-	@echo " готов"
+	@echo " ready"
 
 # Debezium-connector
 
@@ -80,25 +80,16 @@ load:
 	done
 
 check-inbox:
-	@echo "=== inbox_order ==="
+	@echo "=== inbox_order table ==="
 	@docker exec postgres-inbox psql -U postgres -d inbox \
 		-c "SELECT transfer_id, status, created_at FROM inbox_order ORDER BY created_at DESC LIMIT 10;"
 
 check-outbox:
-	@echo "=== outbox ==="
+	@echo "=== outbox table ==="
 	@docker exec postgres psql -U admin -d payments-service-db \
 		-c "SELECT id, event_type, created_at FROM outbox ORDER BY created_at DESC LIMIT 10;"
-
-status:
-	@docker compose ps
 
 # logs
 
 logs:
-	@docker compose logs -f outbox inbox
-
-logs-outbox:
-	@docker compose logs -f outbox
-
-logs-inbox:
-	@docker compose logs -f inbox
+	@docker compose logs -f $(if $(c),$(c),outbox inbox)

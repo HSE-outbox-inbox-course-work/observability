@@ -1,126 +1,57 @@
-# Observability — стенд курсовой работы
+# observability
 
-Объединённый стенд для запуска связки `outbox-payments-service` (CDC) → Kafka → `inbox-service`.
+Репозиторий представляет собой стенд функционирующей гарантированной доставки, собранный при помощи docker compose с наличием метрик Prometheus и мониторинга при помощи Grafana .
 
-На текущем этапе здесь только инфраструктура (Postgres x2, Kafka, Kafka Connect/Debezium, Kafka UI). Prometheus, Grafana и экспортёры будут добавлены позже.
+## Запуск
 
-## Топология
-
-| Компонент | Контейнер | Порт хоста | Назначение |
-|---|---|---|---|
-| Postgres (outbox) | `postgres` | 5432 | БД сервиса outbox, `wal_level=logical` для Debezium |
-| Postgres (inbox) | `postgres-inbox` | 5433 | БД сервиса inbox |
-| Goose | `inbox-migrate` | — | Прокатывает миграции inbox при старте |
-| Kafka (KRaft) | `kafka` | 9092 (внутри), 29092 (с хоста) | Брокер |
-| Kafka UI | `kafka-ui` | 8081 | Просмотр топиков |
-| Kafka Connect | `kafka-connect` | 8083 | Debezium PostgreSQL connector |
-
-Сами Go-сервисы запускаются отдельно через `go run` — так их удобнее отлаживать и инструментировать.
-
-## Запуск связки
-
-### 1. Поднять инфраструктуру
+Сервисы собираются из соседних директорий (`../outbox-payments-service`, `../Inbox`)
 
 ```bash
-cd observability
-docker compose up -d
+make start
 ```
 
-Дождаться, пока контейнеры пройдут healthcheck:
+| Сервис | Адрес |
+|---|---|
+| Outbox API | http://localhost:8080 |
+| Kafka UI | http://localhost:8081 |
+| Kafka Connect | http://localhost:8083 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 — `admin / admin` |
+
+## Команды
 
 ```bash
-docker compose ps
+make start          # старт работы сервисов и инфраструктуры
+make stop           # остановить и удалить volumes (данные сбросятся)
+make restart        # stop + start
+
+make transfer       # один тестовый перевод
+make load           # непрерывная нагрузка ~2 RPS, Ctrl+C чтобы остановить
+
+make check-inbox    # последние 10 записей в inbox_order
+make check-outbox   # последние 10 записей в outbox таблице
+make logs           # Логи сервисов 
 ```
 
-Миграции inbox прокатываются автоматически контейнером `inbox-migrate`. Проверить можно:
+## Запуск
 
-```bash
-docker compose logs inbox-migrate
+Debezium-коннектор регистрируется через REST API уже после старта контейнеров — это делает `make start` через `make register-connector`. Makefile ждёт пока task перейдёт в `RUNNING`, только после этого считает стек готовым.
+
+Топики Kafka (`accounts.money.transferred`, `dead-letter-queue`) создаёт отдельный контейнер `kafka-init`, который запускается один раз и завершается. `inbox` зависит от него через `service_completed_successfully` — то есть стартует только когда топики уже есть. `auto.create.topics.enable` выключен намеренно, чтобы не было ситуации «топик создался с дефолтными настройками потому что кто-то написал в него первым».
+
+## Метрики
+
+Prometheus scrape-ит outbox каждые 15 секунд по адресу `outbox:8080/metrics`. Grafana стартует с уже подключённым Prometheus, дашборд загружается из `grafana/provisioning/dashboards/`.
+
+## Структура
+
 ```
-
-### 2. Запустить outbox-сервис
-
-В другом терминале:
-
-```bash
-cd outbox-payments-service
-go run cmd/main.go
+docker-compose.yaml
+prometheus.yml
+Makefile
+grafana/
+  provisioning/
+    datasources/prometheus.yml    — подключение к Prometheus
+    dashboards/dashboards.yml
+    dashboards/outbox-service.json
 ```
-
-Сервис применит миграции outbox (создаст таблицы `accounts`, `transfers`, `outbox`, publication `outbox_pub`) и начнёт слушать на `localhost:8080`.
-
-### 3. Зарегистрировать Debezium-коннектор
-
-```bash
-cd outbox-payments-service
-make kafka-connect-create-outbox-connector
-```
-
-Проверить:
-
-```bash
-curl -s localhost:8083/connectors/outbox-connector/status | jq
-```
-
-Должно быть `state: RUNNING`.
-
-### 4. Запустить inbox-сервис
-
-В третьем терминале:
-
-```bash
-cd Inbox
-go run cmd/main.go
-```
-
-В логах появится `inbox service started`.
-
-### 5. Сделать тестовый перевод
-
-```bash
-curl -s -X POST localhost:8080/api/v1/accounts/transfer-money \
-  -H "Content-Type: application/json" \
-  -d '{
-    "from_account": "22222222-2222-2222-2222-222222222222",
-    "to_account":   "11111111-1111-1111-1111-111111111111",
-    "amount": 100
-  }'
-```
-
-Ожидаемая цепочка:
-
-1. Outbox создаёт `transfers` запись и `outbox` запись в одной транзакции.
-2. Debezium читает WAL, публикует событие в Kafka-топик `accounts.money.transferred`.
-3. Inbox потребляет из топика, пишет в `inbox_order` (статус `RECEIVED` → `PROCESSED`) и в `processed_payment`.
-
-### 6. Проверить результат
-
-```bash
-# Inbox: запись о принятом сообщении
-docker exec -it postgres-inbox psql -U postgres -d inbox \
-  -c "SELECT transfer_id, status FROM inbox_order;"
-
-# Inbox: бизнес-результат
-docker exec -it postgres-inbox psql -U postgres -d inbox \
-  -c "SELECT * FROM processed_payment;"
-
-# Outbox: проверить что событие было в outbox-таблице
-docker exec -it postgres psql -U admin -d payments-service-db \
-  -c "SELECT id, event_type, created_at FROM outbox ORDER BY created_at DESC LIMIT 5;"
-```
-
-Либо открыть Kafka UI: <http://localhost:8081>.
-
-## Остановка
-
-```bash
-docker compose down            # сохранить volumes
-docker compose down -v         # стереть данные Postgres и Kafka
-```
-
-## Известные тонкости
-
-- **Брокер для клиентов с хоста:** `localhost:29092` (а не `9092` — это внутренний listener для контейнеров).
-- **Имя контейнера `postgres`** оставлено как в исходном `outbox-payments-service/docker-compose.yaml`, чтобы не править `outbox-payments-service/migrations/connect/outbox.json` (там `database.hostname: postgres`).
-- **Inbox-овский `docker-compose.yaml`** в этом сетапе не используется — он остался для соло-разработки inbox без общей инфры.
-- **Outbox-овский `docker-compose.yaml`** дублирует часть сервисов из этого. Когда работаем с полной связкой, его поднимать не нужно.
