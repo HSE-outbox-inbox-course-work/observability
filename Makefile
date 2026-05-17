@@ -12,7 +12,7 @@ LOADGEN := loadgen/bin/loadgen
 .PHONY: help start stop restart ps urls logs \
         register-connector unregister-connector wait-connect wait-outbox wait-inbox \
         loadgen-build \
-        test-baseline test-spike test-dlq test-cdc-fail test-inbox-stall test-duplicates \
+        test-baseline test-dlq test-cdc-fail test-duplicates \
         check-outbox check-inbox check-dlq check-alerts
 
 help: ## Показать список команд
@@ -96,17 +96,11 @@ loadgen-build:
 test-baseline: loadgen-build ## 30 секунд ровного потока 5 RPS
 	@cd tests && ./baseline.sh
 
-test-spike: loadgen-build ## Трапеция нагрузки 5 -> 50 -> 5 RPS за 60 секунд
-	@cd tests && ./spike.sh
-
 test-dlq: loadgen-build ## Опубликовать 20 битых сообщений напрямую в Kafka -> DLQ
 	@cd tests && ./dlq.sh
 
 test-cdc-fail: loadgen-build ## Остановить Kafka Connect на 45 сек при фоновой нагрузке
 	@cd tests && ./cdc-fail.sh
-
-test-inbox-stall: loadgen-build ## Остановить Inbox на 45 сек при фоновой нагрузке
-	@cd tests && ./inbox-stall.sh
 
 test-duplicates: ## Reset offsets группы inbox-service -> переобработка -> метрика duplicates
 	@cd tests && ./duplicates.sh

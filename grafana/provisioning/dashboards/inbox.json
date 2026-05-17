@@ -93,14 +93,21 @@
     {
       "id": 30,
       "type": "timeseries",
-      "title": "Duplicates rate / s",
-      "description": "Сообщения, повторно пришедшие с тем же transfer_id и уже находящиеся в статусе PROCESSED.",
+      "title": "Duplicates (cumulative + rate)",
+      "description": "Левая ось — cumulative counter inbox_duplicates_total (ступенчатая линия, всегда видна). Правая ось — rate за 1 минуту.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 0, "y": 19, "w": 8, "h": 7},
-      "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
+      "fieldConfig": {
+        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 15}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "rate, ops/s"}, "properties": [{"id": "unit", "value": "ops"}, {"id": "custom.axisPlacement", "value": "right"}]},
+          {"matcher": {"id": "byName", "options": "total"}, "properties": [{"id": "unit", "value": "short"}]}
+        ]
+      },
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["last", "max"]}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"refId": "A", "expr": "sum by (topic) (rate(inbox_duplicates_total[1m]))", "legendFormat": "{{topic}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        {"refId": "A", "expr": "sum(inbox_duplicates_total)", "legendFormat": "total", "datasource": {"type": "prometheus", "uid": "prometheus"}},
+        {"refId": "B", "expr": "sum(rate(inbox_duplicates_total[1m]))", "legendFormat": "rate, ops/s", "datasource": {"type": "prometheus", "uid": "prometheus"}}
       ]
     },
     {
