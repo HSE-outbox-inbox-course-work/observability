@@ -1,7 +1,7 @@
 #!/bin/bash
-# dlq: публикует битые сообщения напрямую в accounts.money.transferred,
-# минуя outbox-сервис. Inbox прогоняет их через validate(), помечает
-# inbox_order как FAILED и шлёт в DLQ.
+# Публикует битые сообщения напрямую в accounts.money.transferred, минуя
+# outbox-сервис. Inbox проходит их через validate(), помечает inbox_order
+# как FAILED и шлёт в DLQ.
 set -euo pipefail
 
 COUNT=${COUNT:-20}

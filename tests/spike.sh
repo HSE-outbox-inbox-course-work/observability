@@ -1,5 +1,5 @@
 #!/bin/bash
-# spike: RPS 5 -> 50 -> 5 за 60 секунд.
+# RPS 5 -> 50 -> 5 за 60 секунд.
 set -euo pipefail
 
 DURATION=${DURATION:-60s}

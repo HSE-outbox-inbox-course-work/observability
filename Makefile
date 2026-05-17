@@ -7,13 +7,13 @@ KAFKA_BROKER  := localhost:29092
 
 KAFKA_TOPIC   := accounts.money.transferred
 
+LOADGEN := loadgen/bin/loadgen
+
 .PHONY: help start stop restart ps urls logs \
         register-connector unregister-connector wait-connect wait-outbox wait-inbox \
-        load load-spike \
-        chaos-dlq chaos-duplicates chaos-debezium-off chaos-debezium-on \
-        demo demo-step \
-        check-outbox check-inbox check-alerts \
-        loadgen-build
+        loadgen-build \
+        test-baseline test-spike test-dlq test-cdc-fail test-inbox-stall test-duplicates \
+        check-outbox check-inbox check-dlq check-alerts
 
 help: ## Показать список команд
 	@awk 'BEGIN {FS = ":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*?##/ { printf "  %-24s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -39,6 +39,7 @@ urls: ## Напечатать адреса сервисов
 	@echo "  Outbox API       $(OUTBOX_API)"
 	@echo "  Outbox /metrics  $(OUTBOX_API)/metrics"
 	@echo "  Inbox /metrics   $(INBOX_METRICS)"
+	@echo "  DLQ REST API     http://localhost:8084/dlq"
 	@echo "  Kafka UI         http://localhost:8081"
 	@echo "  Kafka Connect    http://localhost:8083"
 	@echo "  Prometheus       http://localhost:9090"
@@ -89,6 +90,27 @@ unregister-connector: ## Удалить Debezium коннектор (slot ост
 	@curl -sS -X DELETE localhost:8083/connectors/outbox-connector >/dev/null || true
 	@echo "outbox-connector removed"
 
+loadgen-build:
+	@cd loadgen && go build -o bin/loadgen .
+
+test-baseline: loadgen-build ## 30 секунд ровного потока 5 RPS
+	@cd tests && ./baseline.sh
+
+test-spike: loadgen-build ## Трапеция нагрузки 5 -> 50 -> 5 RPS за 60 секунд
+	@cd tests && ./spike.sh
+
+test-dlq: loadgen-build ## Опубликовать 20 битых сообщений напрямую в Kafka -> DLQ
+	@cd tests && ./dlq.sh
+
+test-cdc-fail: loadgen-build ## Остановить Kafka Connect на 45 сек при фоновой нагрузке
+	@cd tests && ./cdc-fail.sh
+
+test-inbox-stall: loadgen-build ## Остановить Inbox на 45 сек при фоновой нагрузке
+	@cd tests && ./inbox-stall.sh
+
+test-duplicates: ## Reset offsets группы inbox-service -> переобработка -> метрика duplicates
+	@cd tests && ./duplicates.sh
+
 check-outbox: ## Последние 10 строк таблицы outbox
 	@docker exec postgres psql -U admin -d payments-service-db \
 		-c "SELECT id, event_type, created_at FROM outbox ORDER BY created_at DESC LIMIT 10;"
@@ -98,6 +120,12 @@ check-inbox: ## Последние 10 строк inbox_order и распреде
 		-c "SELECT transfer_id, status, created_at FROM inbox_order ORDER BY created_at DESC LIMIT 10;"
 	@docker exec postgres-inbox psql -U postgres -d inbox \
 		-c "SELECT status, count(*) FROM inbox_order GROUP BY status;"
+
+check-dlq: ## Последние 10 записей dead_letter_queue + список через REST
+	@docker exec postgres-dlq psql -U test -d dead_letter_queue \
+		-c "SELECT id, topic, error_type, status FROM dead_letter_queue ORDER BY id DESC LIMIT 10;" 2>/dev/null || echo "dead_letter_queue table not yet created"
+	@echo "---"
+	@curl -s localhost:8084/dlq | python3 -m json.tool 2>/dev/null | head -40 || echo "DLQ REST API not ready"
 
 check-alerts: ## Текущие active alerts в Alertmanager
 	@curl -s localhost:9093/api/v2/alerts | python3 -m json.tool || true

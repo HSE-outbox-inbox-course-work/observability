@@ -1,11 +1,4 @@
-# Alerting rules. На стенде они нужны прежде всего как формальная
-# демонстрация: какие сигналы система считает аномальными и при каких
-# порогах. Alertmanager сконфигурирован на null-receiver - реальные
-# нотификации не уходят, но в Prometheus UI и в /alerts видно firing.
-
 groups:
-
-  # Доступность сервисов
 
   - name: availability
     rules:
@@ -19,39 +12,11 @@ groups:
           summary: "Service {{ $labels.job }} is down"
           description: "Prometheus не получает метрики от {{ $labels.job }} ({{ $labels.instance }}) дольше минуты."
 
-  # Гарантии доставки
-
   - name: delivery
     rules:
 
-      - alert: OutboxQueueDepthHigh
-        # Глубина outbox > 1000 строк дольше 2 минут означает, что
-        # Debezium не успевает (или упал, или slot забит). На штатной
-        # нагрузке таблица почти всегда пустая.
-        expr: outbox_table_rows > 1000
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Outbox table accumulating events (> 1000 rows)"
-          description: "outbox_table_rows={{ $value }} - CDC, скорее всего, не справляется."
-
-      - alert: OutboxOldestEventStale
-        # Возраст самого старого события > 60s. Раньше срабатывает,
-        # чем OutboxQueueDepthHigh: глубина может быть низкой, но если
-        # одна старая запись висит - это уже подозрительно.
-        expr: outbox_oldest_event_age_seconds > 60
-        for: 2m
-        labels:
-          severity: warning
-        annotations:
-          summary: "Oldest outbox event is older than 60s"
-          description: "Возраст {{ $value }}s. Возможно, остановлен Debezium-коннектор."
-
       - alert: InboxConsumerLagHigh
-        # Если inbox-service отстал на > 100 сообщений и не догоняет 2 минуты,
-        # сигнализируем. На демо-нагрузке (~5 RPS) это пара десятков секунд
-        # отставания, что заметно.
+        # > 100 не доставленных в обработку сообщений в течение 2 минут.
         expr: kafka_consumergroup_lag{consumergroup="inbox-service"} > 100
         for: 2m
         labels:
@@ -71,35 +36,31 @@ groups:
           description: "В DLQ уходит {{ $value | printf \"%.2f\" }} msg/s."
 
       - alert: E2ELatencyP99High
-        # SLO из плана: p99 ≤ 30 секунд. Превышение 2 минуты - alert.
+        # SLO: p99 ≤ 30 секунд.
         expr: inbox:e2e_latency:p99_5m > 30
         for: 2m
         labels:
           severity: warning
         annotations:
           summary: "E2E delivery latency p99 > 30s"
-          description: "p99={{ $value | printf \"%.2f\" }}s - нарушение SLO."
-
-  # PostgreSQL
+          description: "p99={{ $value | printf \"%.2f\" }}s — нарушение SLO."
 
   - name: postgres
     rules:
 
       - alert: OutboxDeadTuplesHigh
-        # Большое количество dead tuples = частые UPDATE/DELETE. На
-        # CDC-ветке таблица outbox должна освобождаться через WAL retention
-        # и пустой rewrite; высокий показатель - намёк на проблемы с vacuum.
+        # Высокий показатель dead tuples намекает, что autovacuum не успевает.
         expr: pg_stat_user_tables_n_dead_tup{relname="outbox"} > 50000
         for: 5m
         labels:
           severity: warning
         annotations:
           summary: "outbox dead tuples > 50k"
-          description: "n_dead_tup={{ $value }}. Возможно, autovacuum не успевает."
+          description: "n_dead_tup={{ $value }}. autovacuum, скорее всего, не успевает."
 
       - alert: ReplicationSlotLagBytes
-        # Когда Debezium отстаёт, размер «не отпущенного» WAL растёт.
-        # Порог 256 МБ - на стенде это огромная задержка, нужна реакция.
+        # Глубина «недоставленных» данных = WAL, который ещё держит slot.
+        # На CDC-варианте это и есть основной сигнал «Debezium встал».
         expr: pg_replication_slots_pg_wal_lsn_diff > 256 * 1024 * 1024
         for: 2m
         labels:

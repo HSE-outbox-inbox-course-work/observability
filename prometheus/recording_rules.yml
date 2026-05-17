@@ -1,13 +1,11 @@
-# Recording rules: производные метрики, удобные для дашбордов и SLI.
-# Считаются в самом Prometheus, что разгружает Grafana при построении
-# панелей с rate(...) поверх большого окна.
+# Recording rules: производные показатели поверх сырых метрик. Считаются
+# в Prometheus, чтобы дашборды и алерты не пересчитывали rate / histogram_quantile
+# на каждом запросе.
 
 groups:
   - name: delivery.recording
     interval: 30s
     rules:
-
-      # --- RED для outbox-API: единый источник правды для всех панелей ---
 
       - record: outbox:http_requests:rate5m
         expr: sum by (route, status) (rate(outbox_http_requests_total[5m]))
@@ -26,22 +24,16 @@ groups:
             sum by (route, le) (rate(outbox_http_request_duration_seconds_bucket[5m]))
           )
 
-      # --- Inbox обработка ---
-
       - record: inbox:processing:rate5m
         expr: sum by (outcome) (rate(inbox_messages_processed_total[5m]))
 
       - record: inbox:duplicate_ratio:5m
-        # Доля дубликатов от общего числа полученных сообщений.
-        # Высокое значение либо означает рестарт inbox (Kafka переотправляет),
-        # либо реальную ошибку в дедупликации.
         expr: |
           sum(rate(inbox_duplicates_total[5m]))
           /
           clamp_min(sum(rate(inbox_kafka_messages_read_total{outcome="ok"}[5m])), 0.001)
 
       - record: inbox:dlq_ratio:5m
-        # Доля сообщений ушедших в DLQ. Главный SLI «корректности» доставки.
         expr: |
           sum(rate(inbox_dlq_messages_total{outcome="ok"}[5m]))
           /

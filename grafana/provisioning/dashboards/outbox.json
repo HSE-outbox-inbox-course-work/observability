@@ -70,7 +70,7 @@
       "id": 20,
       "type": "timeseries",
       "title": "Transfer attempts by outcome",
-      "description": "Бизнес-исход usecase TransferMoney. Сюда попадают только terminal-исходы (ok / insufficient_funds / invalid_amount / account_not_found / db_error).",
+      "description": "Terminal-исход usecase TransferMoney: ok / insufficient_funds / invalid_amount / account_not_found / db_error.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 0, "y": 9, "w": 12, "h": 8},
       "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},
@@ -106,9 +106,9 @@
       "id": 30,
       "type": "timeseries",
       "title": "Events inserted / s",
-      "description": "Сколько событий accounts.money.transferred реально записано в outbox (после успешного COMMIT транзакции).",
+      "description": "Сколько событий accounts.money.transferred реально записано в outbox после COMMIT.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "gridPos": {"x": 0, "y": 18, "w": 8, "h": 7},
+      "gridPos": {"x": 0, "y": 18, "w": 12, "h": 7},
       "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
       "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "multi"}},
       "targets": [
@@ -118,25 +118,14 @@
     {
       "id": 31,
       "type": "timeseries",
-      "title": "Outbox depth (rows)",
+      "title": "Replication slot WAL lag (bytes)",
+      "description": "Размер WAL, который ещё держит slot outbox_slot — недоставленный Debezium-ом объём.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "gridPos": {"x": 8, "y": 18, "w": 8, "h": 7},
-      "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
+      "gridPos": {"x": 12, "y": 18, "w": 12, "h": 7},
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"refId": "A", "expr": "outbox_table_rows", "legendFormat": "rows", "datasource": {"type": "prometheus", "uid": "prometheus"}}
-      ]
-    },
-    {
-      "id": 32,
-      "type": "timeseries",
-      "title": "Oldest event age (s)",
-      "datasource": {"type": "prometheus", "uid": "prometheus"},
-      "gridPos": {"x": 16, "y": 18, "w": 8, "h": 7},
-      "fieldConfig": {"defaults": {"unit": "s", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
-      "options": {"legend": {"displayMode": "list", "placement": "bottom"}, "tooltip": {"mode": "single"}},
-      "targets": [
-        {"refId": "A", "expr": "outbox_oldest_event_age_seconds", "legendFormat": "age, s", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        {"refId": "A", "expr": "pg_replication_slots_pg_wal_lsn_diff", "legendFormat": "{{slot_name}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
       ]
     },
 
@@ -166,8 +155,8 @@
     {
       "id": 41,
       "type": "timeseries",
-      "title": "pgxpool wait count (saturation)",
-      "description": "Сумма Acquire-вызовов, которым пришлось ждать свободного соединения. Растёт — пул на пределе.",
+      "title": "pgxpool wait count",
+      "description": "Кумулятивное число Acquire-вызовов, которым пришлось ждать свободного соединения.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 12, "y": 26, "w": 12, "h": 7},
       "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
@@ -198,7 +187,7 @@
       "id": 43,
       "type": "timeseries",
       "title": "Postgres outbox table (dead/live tuples)",
-      "description": "Из postgres_exporter поверх payments-service-db. Скачок dead tuples — нагрузка на autovacuum, а значит и на CDC.",
+      "description": "pg_stat_user_tables по таблице outbox.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 12, "y": 33, "w": 12, "h": 7},
       "fieldConfig": {"defaults": {"unit": "short", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},

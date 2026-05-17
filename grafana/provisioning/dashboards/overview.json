@@ -92,7 +92,7 @@
       "id": 13,
       "type": "stat",
       "title": "Inbox consumer lag",
-      "description": "kafka_consumergroup_lag для inbox-service: сколько сообщений ещё не обработано.",
+      "description": "Сколько сообщений топика accounts.money.transferred ещё не обработано группой inbox-service.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 18, "y": 0, "w": 6, "h": 4},
       "fieldConfig": {
@@ -117,7 +117,7 @@
       "id": 20,
       "type": "timeseries",
       "title": "Transfer requests / s by status",
-      "description": "RED-метрика: трафик на /api/v1/accounts/transfer-money разбит по HTTP статусу.",
+      "description": "Трафик на /api/v1/accounts/transfer-money по HTTP-статусам.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 0, "y": 4, "w": 12, "h": 8},
       "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "stacking": {"mode": "normal"}}}, "overrides": []},
@@ -144,27 +144,21 @@
     {
       "id": 22,
       "type": "timeseries",
-      "title": "Outbox table depth & oldest event age",
-      "description": "Сколько строк в таблице outbox и возраст самого старого события. Под штатной нагрузкой и CDC обе линии околонулевые.",
+      "title": "Replication slot WAL lag (bytes)",
+      "description": "Сколько WAL ещё держит slot outbox_slot. Это и есть «недоставленный объём» при CDC-варианте: пустое — Debezium успевает, растёт — встал.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 0, "y": 12, "w": 12, "h": 8},
-      "fieldConfig": {
-        "defaults": {"custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}},
-        "overrides": [
-          {"matcher": {"id": "byName", "options": "oldest age, s"}, "properties": [{"id": "unit", "value": "s"}, {"id": "custom.axisPlacement", "value": "right"}]}
-        ]
-      },
+      "fieldConfig": {"defaults": {"unit": "bytes", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10}}, "overrides": []},
       "options": {"legend": {"displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"]}, "tooltip": {"mode": "multi"}},
       "targets": [
-        {"refId": "A", "expr": "outbox_table_rows", "legendFormat": "rows", "datasource": {"type": "prometheus", "uid": "prometheus"}},
-        {"refId": "B", "expr": "outbox_oldest_event_age_seconds", "legendFormat": "oldest age, s", "datasource": {"type": "prometheus", "uid": "prometheus"}}
+        {"refId": "A", "expr": "pg_replication_slots_pg_wal_lsn_diff", "legendFormat": "{{slot_name}}", "datasource": {"type": "prometheus", "uid": "prometheus"}}
       ]
     },
     {
       "id": 23,
       "type": "timeseries",
       "title": "Inbox processing outcomes / s",
-      "description": "Разбивка финальных исходов обработки сообщений в Inbox. Спайк processing_error или validation_error виден сразу.",
+      "description": "Разбивка финальных исходов обработки сообщений в Inbox.",
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "gridPos": {"x": 12, "y": 12, "w": 12, "h": 8},
       "fieldConfig": {"defaults": {"unit": "ops", "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 25, "stacking": {"mode": "normal"}}}, "overrides": []},

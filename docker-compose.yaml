@@ -1,17 +1,8 @@
 name: course-work
 
-# Все сервисы курсовой собраны в одном compose-проекте: и инфраструктура
-# (Postgres × 2, Kafka, Kafka Connect/Debezium), и сами микросервисы команды
-# (outbox-payments-service, Inbox), и слой наблюдаемости (Prometheus,
-# Grafana, Alertmanager, postgres_exporter × 2, kafka_exporter).
-#
-# healthcheck'и и depends_on с condition: service_healthy выстроены так,
-# чтобы `docker compose up -d` гарантированно поднимал стек по порядку
-# — без race condition при первом старте.
-
 services:
 
-  # ───────────────────────── Базы данных ─────────────────────────
+  # Базы данных
 
   postgres:
     image: postgres:16
@@ -23,8 +14,6 @@ services:
     ports:
       - "5432:5432"
     # wal_level=logical обязателен для Debezium (logical replication).
-    # max_wal_senders / max_replication_slots оставляем дефолтными, но
-    # увеличиваем чтобы не упереться в лимит при отладке.
     command: >
       postgres
       -c wal_level=logical
@@ -55,7 +44,24 @@ services:
       timeout: 5s
       retries: 10
 
-  # ───────────────────────── Kafka ────────────────────────────────
+  postgres-dlq:
+    image: postgres:16
+    container_name: postgres-dlq
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: dead_letter_queue
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_dlq_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d dead_letter_queue"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Kafka
 
   kafka:
     image: confluentinc/cp-kafka:latest
@@ -143,7 +149,7 @@ services:
       timeout: 5s
       retries: 30
 
-  # ───────────────────────── Микросервисы ─────────────────────────
+  # Микросервисы 
 
   outbox:
     build:
@@ -173,8 +179,7 @@ services:
       context: ../Inbox
     container_name: inbox
     ports:
-      # 8082 наружу, 8080 внутри. Внешний порт отличается от outbox (8080),
-      # чтобы оба сервиса можно было обращаться напрямую с хоста.
+      # 8082 наружу, 8080 внутри — внешний порт отличается от outbox.
       - "8082:8080"
     environment:
       INBOX_DB_DSN: "postgres://postgres:postgres@postgres-inbox:5432/inbox?sslmode=disable"
@@ -193,19 +198,33 @@ services:
       timeout: 3s
       retries: 20
 
-  # ────────── Инфраструктурные экспортёры для Prometheus ──────────
+  # SPRING_* env-переменные переопределяют localhost-адреса из application.yaml
+  # без правки самого файла.
+  dlq:
+    build:
+      context: ../dlq-service
+    container_name: dlq
+    ports:
+      - "8084:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-dlq:5432/dead_letter_queue
+      SPRING_DATASOURCE_USERNAME: test
+      SPRING_DATASOURCE_PASSWORD: test
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SPRING_KAFKA_CONSUMER_GROUP_ID: dlq-group
+    depends_on:
+      postgres-dlq:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
 
-  # Экспортёр для outbox-БД. Отдаёт pg_stat_user_tables_*
-  # (dead/live tuples, last_autovacuum), pg_stat_database (xact_commit
-  # / rollback) и, главное, pg_replication_slots_* для слота Debezium.
+  # Инфраструктурные экспортёры для Prometheus
+
   postgres-exporter-outbox:
     image: prometheuscommunity/postgres-exporter:v0.15.0
     container_name: postgres-exporter-outbox
     environment:
       DATA_SOURCE_NAME: "postgresql://admin:password@postgres:5432/payments-service-db?sslmode=disable"
-      PG_EXPORTER_EXTEND_QUERY_PATH: /etc/postgres-exporter/queries.yaml
-    volumes:
-      - ./postgres-exporter/queries.yaml:/etc/postgres-exporter/queries.yaml:ro
     ports:
       - "9187:9187"
     depends_on:
@@ -223,9 +242,6 @@ services:
       postgres-inbox:
         condition: service_healthy
 
-  # Экспортёр Kafka. Главное, что отсюда нужно — kafka_consumergroup_lag,
-  # потому что лаг inbox-service'а — ключевой сигнал «брокер копит, потребитель
-  # не справляется». Сам по себе kafka не отдаёт это в Prometheus формате.
   kafka-exporter:
     image: danielqsj/kafka-exporter:latest
     container_name: kafka-exporter
@@ -237,7 +253,7 @@ services:
       kafka:
         condition: service_healthy
 
-  # ───────────────────────── Мониторинг ───────────────────────────
+  # Мониторинг
 
   prometheus:
     image: prom/prometheus:latest
@@ -272,8 +288,6 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: admin
       GF_USERS_ALLOW_SIGN_UP: "false"
-      # Сразу при логине отдаёт сводный дашборд «Delivery Overview» —
-      # на защите не нужно лазить по списку.
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/overview.json
     volumes:
       - grafana_data:/var/lib/grafana
@@ -284,6 +298,7 @@ services:
 volumes:
   postgres_outbox_data:
   postgres_inbox_data:
+  postgres_dlq_data:
   kafka_data:
   prometheus_data:
   grafana_data:

@@ -1,12 +1,3 @@
-# Prometheus конфигурация наблюдаемости системы гарантированной доставки.
-#
-# scrape_interval=10s — достаточно мелкий шаг, чтобы при защите были видны
-# отклики на chaos-сценарии (рестарт inbox-а, остановка Debezium) в режиме
-# почти-реального времени, не наполняя TSDB сверх меры за 24h retention.
-#
-# Job-имена совпадают с тем, как сервис себя называет — это позволяет в
-# дашбордах фильтровать строго по job без догадок о relabel'ах.
-
 global:
   scrape_interval: 10s
   evaluation_interval: 10s
@@ -24,13 +15,9 @@ alerting:
 
 scrape_configs:
 
-  # Сам Prometheus — обязательно скрейпим себя, чтобы видеть up=1
-  # и метрики самого TSDB (rate of dropped samples, scrape duration).
   - job_name: prometheus
     static_configs:
       - targets: ['localhost:9090']
-
-  # Микросервисы команды
 
   - job_name: outbox
     metrics_path: /metrics
@@ -41,8 +28,6 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ['inbox:8080']
-
-  # PostgreSQL: два инстанса, разные БД (outbox и inbox)
 
   - job_name: postgres-outbox
     static_configs:
@@ -55,9 +40,6 @@ scrape_configs:
       - targets: ['postgres-exporter-inbox:9187']
         labels:
           db: inbox
-
-  # Kafka: один экземпляр, отдаёт kafka_consumergroup_lag,
-  # kafka_topic_partition_current_offset и пр.
 
   - job_name: kafka
     static_configs:

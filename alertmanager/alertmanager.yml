@@ -1,9 +1,6 @@
-# Alertmanager на стенде нужен в первую очередь как формальная демонстрация:
-# Prometheus умеет маршрутизировать алерты, а не просто показывать их в UI.
-# Реальная доставка в email/Slack/Telegram не нужна — поэтому единственный
-# receiver — null, без интеграций.
-#
-# При желании достаточно прописать webhook_configs / email_configs здесь.
+# Null-receiver: алерты видны в Prometheus и Alertmanager UI, но никуда
+# не пересылаются. Для интеграции добавить email_configs / webhook_configs
+# и поменять receiver в route.
 
 route:
   receiver: 'null'

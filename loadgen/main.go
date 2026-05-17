@@ -1,23 +1,11 @@
-// loadgen — простой генератор нагрузки и chaos-сценариев для стенда курсовой.
+// loadgen — генератор нагрузки и тестовых сценариев.
 //
 // Сценарии:
 //
-//	transfer        Циклически шлёт POST /api/v1/accounts/transfer-money
-//	                между четырьмя seed-аккаунтами с заданным RPS.
-//
-//	spike           Резкий всплеск нагрузки: --rps в течение --duration,
-//	                потом базовый фон. Удобно для демонстрации, как
-//	                ведут себя p99 и pgxpool в момент всплеска.
-//
-//	invalid-payload Публикует битые сообщения НАПРЯМУЮ в Kafka-топик
-//	                accounts.money.transferred, минуя outbox-сервис.
-//	                Это эмулирует ситуацию, когда в шину попало нечто,
-//	                что Inbox считает невалидным → отправляет в DLQ.
-//	                Без этого сценария метрика DLQ почти неработоспособна,
-//	                потому что outbox сам по себе не генерит невалидные
-//	                payload'ы.
-//
-// Запуск: см. Makefile цели load*, chaos-*, demo.
+//	transfer         POST /api/v1/accounts/transfer-money между seed-аккаунтами с заданным RPS.
+//	spike            Трапеция RPS: --rps → --spike-rps → --rps за --duration.
+//	invalid-payload  Битые сообщения напрямую в Kafka-топик accounts.money.transferred,
+//	                 минуя outbox-сервис. Использует тот же envelope-формат, что и Debezium.
 package main
 
 import (
@@ -37,10 +25,8 @@ import (
 	"github.com/segmentio/kafka-go"
 )
 
-// seedAccounts — те же UUID, что прошиваются миграцией outbox-сервиса.
-// Перебираем по кругу, чтобы баланс не уходил в 0 и метрика
-// transfer_attempts_total{outcome="insufficient_funds"} оставалась нулём
-// при штатном сценарии
+// seedAccounts — UUID из миграции outbox-сервиса. Перебираем по кругу,
+// чтобы балансы не уходили в 0.
 var seedAccounts = []string{
 	"11111111-1111-1111-1111-111111111111",
 	"22222222-2222-2222-2222-222222222222",
@@ -165,11 +151,9 @@ func postTransfer(ctx context.Context, c *http.Client, target, from, to string, 
 	return nil
 }
 
-// runInvalidPayload публикует пять разновидностей битых сообщений
-// в топик accounts.money.transferred. Inbox их прочитает, прогонит
-// через validate(), и каждое отправит в DLQ — на дашборде Inbox это
-// поднимет inbox_dlq_messages_total и inbox_validation_errors_total
-// по полям (transfer_id, amount, from_account, to_account).
+// runInvalidPayload публикует пять разновидностей битых сообщений в
+// accounts.money.transferred, минуя outbox-сервис. Inbox прогонит их
+// через validate() и отправит в DLQ.
 func runInvalidPayload(ctx context.Context, broker, topic string, count int, dur time.Duration) {
 	if count == 0 && dur == 0 {
 		count = 20
@@ -216,8 +200,7 @@ func runInvalidPayload(ctx context.Context, broker, topic string, count int, dur
 			payload := badPayloads[sent%len(badPayloads)]
 			inner, _ := json.Marshal(payload)
 			// Debezium EventRouter оборачивает payload в {"payload":"<json string>"}.
-			// Имитируем эту обёртку, чтобы Inbox.Listener десериализовал её
-			// своим обычным путём — без специальной ветки на «битые» сообщения.
+			// Воспроизводим эту обёртку, чтобы Inbox.Listener шёл по обычной ветке.
 			outer, _ := json.Marshal(map[string]string{"payload": string(inner)})
 			if err := w.WriteMessages(ctx, kafka.Message{Value: outer}); err != nil {
 				log.Printf("kafka write error: %v", err)

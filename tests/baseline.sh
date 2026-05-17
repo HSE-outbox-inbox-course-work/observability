@@ -1,5 +1,5 @@
 #!/bin/bash
-# baseline: спокойный поток 5 RPS на 30 секунд.
+# Ровный поток 5 RPS на 30 секунд.
 set -euo pipefail
 
 DURATION=${DURATION:-30s}
